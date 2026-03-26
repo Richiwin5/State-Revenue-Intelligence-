@@ -1,0 +1,260 @@
+/* styles.css - Professional Dashboard Styles */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Global Styles */
+.stApp {
+    font-family: 'Inter', sans-serif;
+    transition: all 0.3s ease;
+}
+
+/* Dark Mode Styles */
+.dark-mode {
+    background-color: #1a1a2e;
+    color: #ffffff;
+}
+
+.dark-mode .stMarkdown,
+.dark-mode .stMetric,
+.dark-mode .stDataFrame,
+.dark-mode .stText {
+    color: #ffffff;
+}
+
+/* Custom Header */
+.custom-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 1rem;
+    margin-bottom: 2rem;
+    color: white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    animation: slideDown 0.5s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.custom-header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0;
+    color: white;
+    letter-spacing: -0.5px;
+}
+
+.custom-header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+    margin-top: 0.5rem;
+}
+
+/* Logo Container */
+.logo-container {
+    text-align: center;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: rgba(255,255,255,0.1);
+    border-radius: 1rem;
+}
+
+.dark-mode .logo-container {
+    background: rgba(255,255,255,0.05);
+}
+
+/* Metric Cards */
+.metric-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+    border: 1px solid rgba(0,0,0,0.05);
+    position: relative;
+    overflow: hidden;
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.metric-card:hover::before {
+    transform: scaleX(1);
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.dark-mode .metric-card {
+    background: linear-gradient(135deg, #2d2d44 0%, #1e1e2f 100%);
+    color: white;
+    border-color: rgba(255,255,255,0.1);
+}
+
+.metric-card .metric-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #2c3e50;
+    margin: 0.5rem 0;
+}
+
+.dark-mode .metric-card .metric-value {
+    color: #ffffff;
+}
+
+.metric-card .metric-label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+.dark-mode .metric-card .metric-label {
+    color: #a0a0a0;
+}
+
+/* Format Numbers */
+.trillions { color: #e74c3c; font-weight: bold; }
+.billions { color: #f39c12; font-weight: bold; }
+.millions { color: #27ae60; font-weight: bold; }
+.thousands { color: #3498db; font-weight: bold; }
+
+/* Chart Containers */
+.chart-container {
+    background: white;
+    border-radius: 1rem;
+    padding: 1rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    margin-bottom: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.chart-container:hover {
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.dark-mode .chart-container {
+    background: #2d2d44;
+    color: white;
+}
+
+/* Menu Styles */
+.menu-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.menu-item {
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    background: rgba(102, 126, 234, 0.1);
+    border-left: 3px solid transparent;
+}
+
+.menu-item:hover {
+    background: rgba(102, 126, 234, 0.2);
+    transform: translateX(5px);
+}
+
+.menu-item.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-left-color: white;
+}
+
+/* Chat Messages */
+.stChatMessage {
+    border-radius: 1rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.stChatMessage.user {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-left: auto;
+    max-width: 80%;
+}
+
+.stChatMessage.assistant {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    margin-right: auto;
+    max-width: 80%;
+}
+
+.dark-mode .stChatMessage.assistant {
+    background: #2d2d44;
+    border-color: #3d3d5c;
+    color: white;
+}
+
+/* Buttons */
+.stButton button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.stButton button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Footer */
+.custom-footer {
+    background: linear-gradient(135deg, #2c3e50 0%, #1a1a2e 100%);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    text-align: center;
+    margin-top: 2rem;
+}
+
+.dark-mode .custom-footer {
+    background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .metric-card .metric-value { font-size: 1.25rem; }
+    .custom-header h1 { font-size: 1.5rem; }
+    .custom-header p { font-size: 0.9rem; }
+    .stChatMessage.user, .stChatMessage.assistant { max-width: 95%; }
+}

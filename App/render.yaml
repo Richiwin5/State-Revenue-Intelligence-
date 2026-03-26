@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: revenue-dashboard
+    runtime: python
+    repo: https://github.com/YOUR_USERNAME/revenue-dashboard.git
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run dashboard.py --server.port $PORT --server.address 0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false
+    envVars:
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+
+
