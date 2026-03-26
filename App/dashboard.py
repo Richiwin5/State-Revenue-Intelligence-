@@ -10,8 +10,8 @@ import io
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+if os.getenv("RENDER") is None:
+    load_dotenv()
 
 
 # ============================================
@@ -19,37 +19,24 @@ load_dotenv()
 # ============================================
 
 def get_database_url():
-    """Get database URL from environment variables"""
-    # Check for DATABASE_URL first
+    # Always try DATABASE_URL first (Render production)
     database_url = os.getenv("DATABASE_URL")
+
     if database_url:
         return database_url
 
-    # Otherwise build from individual components
-    required_vars = {
-        "DB_USER": os.getenv("DB_USER"),
-        "DB_PASS": os.getenv("DB_PASS"),
-        "DB_HOST": os.getenv("DB_HOST"),
-        "DB_PORT": os.getenv("DB_PORT"),
-        "DB_NAME": os.getenv("DB_NAME")
-    }
+    # Fallback for local development (.env)
+    DB_USER = os.getenv("DB_USER")
+    DB_PASS = os.getenv("DB_PASS")
+    DB_HOST = os.getenv("DB_HOST")
+    DB_PORT = os.getenv("DB_PORT")
+    DB_NAME = os.getenv("DB_NAME")
 
-    # Check for missing variables
-    missing = [var for var, value in required_vars.items() if not value]
-    if missing:
-        st.error(f"❌ Missing environment variables: {', '.join(missing)}")
-        st.info("Please set these in Render Dashboard → Environment → Environment Variables")
-        st.stop()
+    if not all([DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME]):
+        raise Exception("Missing DB config")
 
-    # Validate port
-    try:
-        port_int = int(required_vars["DB_PORT"])
-        required_vars["DB_PORT"] = str(port_int)
-    except ValueError:
-        st.error(f"❌ Invalid DB_PORT: '{required_vars['DB_PORT']}'. Must be a number (e.g., 5432)")
-        st.stop()
+    return f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-    return f"postgresql+psycopg2://{required_vars['DB_USER']}:{required_vars['DB_PASS']}@{required_vars['DB_HOST']}:{required_vars['DB_PORT']}/{required_vars['DB_NAME']}"
 
 
 @st.cache_resource
