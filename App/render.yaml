@@ -2,7 +2,7 @@ services:
   - type: web
     name: revenue-dashboard
     runtime: python
-    repo: https://github.com/YOUR_USERNAME/revenue-dashboard.git
+    repo: https://github.com/Richiwin5/State-Revenue-Intelligence-.git
     plan: free
     branch: main
     buildCommand: pip install -r requirements.txt
