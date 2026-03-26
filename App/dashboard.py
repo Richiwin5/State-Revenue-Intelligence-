@@ -15,35 +15,59 @@ load_dotenv()
 
 
 # ============================================
-# DATABASE CONNECTION (FROM .env FILE)
+# DATABASE CONNECTION (FIXED)
 # ============================================
 
 def get_database_url():
     """Get database URL from environment variables"""
-    if os.getenv("DATABASE_URL"):
-        return os.getenv("DATABASE_URL")
+    # Check for DATABASE_URL first
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
 
-    DB_USER = os.getenv("DB_USER")
-    DB_PASS = os.getenv("DB_PASS")
-    DB_HOST = os.getenv("DB_HOST")
-    DB_PORT = os.getenv("DB_PORT")
-    DB_NAME = os.getenv("DB_NAME")
+    # Otherwise build from individual components
+    required_vars = {
+        "DB_USER": os.getenv("DB_USER"),
+        "DB_PASS": os.getenv("DB_PASS"),
+        "DB_HOST": os.getenv("DB_HOST"),
+        "DB_PORT": os.getenv("DB_PORT"),
+        "DB_NAME": os.getenv("DB_NAME")
+    }
 
-    return f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    # Check for missing variables
+    missing = [var for var, value in required_vars.items() if not value]
+    if missing:
+        st.error(f"❌ Missing environment variables: {', '.join(missing)}")
+        st.info("Please set these in Render Dashboard → Environment → Environment Variables")
+        st.stop()
+
+    # Validate port
+    try:
+        port_int = int(required_vars["DB_PORT"])
+        required_vars["DB_PORT"] = str(port_int)
+    except ValueError:
+        st.error(f"❌ Invalid DB_PORT: '{required_vars['DB_PORT']}'. Must be a number (e.g., 5432)")
+        st.stop()
+
+    return f"postgresql+psycopg2://{required_vars['DB_USER']}:{required_vars['DB_PASS']}@{required_vars['DB_HOST']}:{required_vars['DB_PORT']}/{required_vars['DB_NAME']}"
 
 
 @st.cache_resource
 def init_connection():
-    """Initializing connection"""
+    """Initialize database connection"""
     try:
         database_url = get_database_url()
         engine = create_engine(database_url, pool_pre_ping=True)
+
+        # Test connection
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1"))
             result.fetchone()
+
         return engine
+
     except Exception as e:
-        st.error(f"  connection failed: {str(e)}")
+        st.error(f"❌ Connection failed: {str(e)}")
         st.stop()
 
 
@@ -51,10 +75,13 @@ engine = init_connection()
 
 
 @st.cache_data(ttl=600)
-def run_query(query):
-    """please wait...."""
+def run_query(query, params=None):
+    """Execute query safely with optional parameters"""
     try:
-        return pd.read_sql(query, engine)
+        if params:
+            return pd.read_sql(query, engine, params=params)
+        else:
+            return pd.read_sql(query, engine)
     except Exception as e:
         st.error(f"Query failed: {str(e)}")
         return pd.DataFrame()
@@ -129,16 +156,22 @@ if "current_page" not in st.session_state:
 
 current_year = datetime.now().year
 
-# Test database connection
+# Test database connection with proper error handling
 try:
     test_df = run_query("SELECT COUNT(*) as count FROM ebs_master")
-    if not test_df.empty and test_df['count'][0] > 0:
-        record_count = test_df['count'][0]
-        st.sidebar.success(f" {record_count:,} records")
+    if test_df.empty:
+        st.sidebar.error("❌ Table 'ebs_master' not found or empty")
+        st.stop()
+
+    record_count = test_df['count'].iloc[0] if not test_df.empty else 0
+    if record_count > 0:
+        st.sidebar.success(f"✅ {record_count:,} records found")
     else:
-        st.sidebar.warning(" data not loading....")
+        st.sidebar.warning("⚠️ Table exists but has no data")
+
 except Exception as e:
-    st.sidebar.error(f" Connection Error")
+    st.sidebar.error(f"❌ Database error: {str(e)}")
+    st.sidebar.info("Please verify: 1) Tables exist, 2) Database credentials are correct")
     st.stop()
 
 # Custom Header
@@ -176,7 +209,7 @@ with st.sidebar:
                   "💼 Business Insights", "🗺️ LGA Deep Dive", "🤖 AI Assistant"]
 
     for item in menu_items:
-        if st.button(item, key=item, use_container_width=True):
+        if st.button(item, key=item, width='stretch'):
             st.session_state.current_page = item
             st.rerun()
 
@@ -208,22 +241,23 @@ with st.sidebar:
                 GROUP BY lga 
                 ORDER BY total_revenue DESC
             """
+            return run_query(query)
         else:
-            query = f"""
+            query = """
                 SELECT lga, SUM(amount_paid) as total_revenue, 
                        COUNT(DISTINCT taxpayer_id) as taxpayers,
                        SUM(amount_due) as total_due,
                        COUNT(*) as assessments
                 FROM ebs_master 
-                WHERE lga = '{export_lga}'
+                WHERE lga = %s
                 GROUP BY lga
             """
-        return run_query(query)
+            return run_query(query, params=(export_lga,))
 
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("📊 CSV", use_container_width=True):
+        if st.button("📊 CSV", width='stretch'):
             export_data = generate_export_data()
             if not export_data.empty:
                 csv_data = export_data.to_csv(index=False)
@@ -232,10 +266,10 @@ with st.sidebar:
                     data=csv_data,
                     file_name=f"revenue_data_{export_lga}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
-                    use_container_width=True
+                    width='stretch'
                 )
     with col2:
-        if st.button("📄 Excel", use_container_width=True):
+        if st.button("📄 Excel", width='stretch'):
             export_data = generate_export_data()
             if not export_data.empty:
                 output = io.BytesIO()
@@ -247,7 +281,7 @@ with st.sidebar:
                     data=excel_data,
                     file_name=f"revenue_data_{export_lga}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    width='stretch'
                 )
 
     st.markdown("---")
@@ -267,8 +301,6 @@ with st.sidebar:
 
     st.info(f"""
     **Data Coverage:** {min_year}-{max_year}  
-    **Status:** 🟢   
-    **Database:** PostgreSQL (Render)
     """)
 
 # Apply dark mode
@@ -288,7 +320,7 @@ selected_lga_global = st.sidebar.selectbox("Select LGA for Analysis", lga_option
 
 def get_filtered_data(lga_filter=None):
     if lga_filter and lga_filter != "All":
-        return run_query(f"SELECT * FROM ebs_master WHERE lga = '{lga_filter}'")
+        return run_query("SELECT * FROM ebs_master WHERE lga = %s", params=(lga_filter,))
     else:
         return run_query("SELECT * FROM ebs_master")
 
@@ -356,7 +388,7 @@ if page == "📊 Overview Dashboard":
                          title='Top 10 LGAs by Revenue', labels={'amount_paid': 'Revenue', 'lga': 'LGA'},
                          color='amount_paid', color_continuous_scale='Viridis')
             fig.update_layout(height=500, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             st.markdown('</div>', unsafe_allow_html=True)
 
         with col2:
@@ -366,7 +398,7 @@ if page == "📊 Overview Dashboard":
             fig = px.pie(revenue_sector, values='amount_paid', names='sector',
                          title='Revenue Distribution by Sector', hole=0.3)
             fig.update_layout(height=500, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Top Taxpayers
@@ -374,7 +406,7 @@ if page == "📊 Overview Dashboard":
         st.subheader(" Top Performing Taxpayers")
         top_taxpayers = df.groupby(['taxpayer_id', 'full_name', 'lga', 'sector'])['amount_paid'].sum().reset_index()
         top_taxpayers = top_taxpayers.sort_values('amount_paid', ascending=False).head(10)
-        st.dataframe(top_taxpayers, use_container_width=True)
+        st.dataframe(top_taxpayers, width='stretch')
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.warning("No data available")
@@ -415,7 +447,7 @@ elif page == "🏢 Sector Analysis":
                      title='Total Revenue Collected by Sector',
                      color='amount_paid', color_continuous_scale='Viridis')
         fig.update_layout(height=500, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
         st.markdown('</div>', unsafe_allow_html=True)
 
         # Detailed Sector Table
@@ -429,7 +461,7 @@ elif page == "🏢 Sector Analysis":
         sector_detail.columns = ['Sector', 'Taxpayers', 'Total Due', 'Total Paid']
         sector_detail['Collection Rate'] = (sector_detail['Total Paid'] / sector_detail['Total Due'] * 100).round(2)
         sector_detail['Outstanding'] = sector_detail['Total Due'] - sector_detail['Total Paid']
-        st.dataframe(sector_detail, use_container_width=True)
+        st.dataframe(sector_detail, width='stretch')
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.warning("No data available")
@@ -503,7 +535,7 @@ elif page == "🏠 Property Intelligence":
                     fig = px.pie(values=property_types.values, names=property_types.index,
                                  title='Residential vs Commercial Properties')
                     fig.update_layout(height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with col2:
@@ -514,7 +546,7 @@ elif page == "🏠 Property Intelligence":
                     fig = px.bar(lga_value, x='estimated_value', y='lga', orientation='h',
                                  title='Total Property Value by LGA')
                     fig.update_layout(height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="chart-container">', unsafe_allow_html=True)
@@ -525,7 +557,7 @@ elif page == "🏠 Property Intelligence":
             }).reset_index()
             top_owners = top_owners.sort_values('estimated_value', ascending=False).head(10)
             top_owners.columns = ['Owner ID', 'Name', 'LGA', 'Sector', 'Total Property Value', 'Properties Count']
-            st.dataframe(top_owners, use_container_width=True)
+            st.dataframe(top_owners, width='stretch')
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("No property data available")
@@ -592,7 +624,7 @@ elif page == "💼 Business Insights":
                 st.subheader(" Top Businesses by Revenue")
                 top_revenue = businesses_df.nlargest(10, 'annual_revenue')[
                     ['business_name', 'sector', 'annual_revenue', 'employee_count']]
-                st.dataframe(top_revenue, use_container_width=True)
+                st.dataframe(top_revenue, width='stretch')
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with col2:
@@ -603,7 +635,7 @@ elif page == "💼 Business Insights":
                     fig = px.pie(sector_revenue, values='annual_revenue', names='sector',
                                  title='Business Revenue Distribution by Sector')
                     fig.update_layout(height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="chart-container">', unsafe_allow_html=True)
@@ -618,7 +650,7 @@ elif page == "💼 Business Insights":
                                           'Registration Rate']
             sector_performance['Avg Revenue/Business'] = sector_performance['Total Revenue'] / sector_performance[
                 'Business Count']
-            st.dataframe(sector_performance, use_container_width=True)
+            st.dataframe(sector_performance, width='stretch')
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("No business data available")
@@ -626,7 +658,7 @@ elif page == "💼 Business Insights":
         st.info(f"Business data not available")
 
 # ============================================
-# 5. LGA DEEP DIVE (WITH WARDS & STREETS) - CLEAN DISPLAY
+# 5. LGA DEEP DIVE (WITH WARDS & STREETS)
 # ============================================
 elif page == "🗺️ LGA Deep Dive":
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
@@ -638,7 +670,7 @@ elif page == "🗺️ LGA Deep Dive":
         selected_lga = st.selectbox("Select LGA for Detailed Analysis", lga_list)
 
         if selected_lga:
-            lga_data = run_query(f"SELECT * FROM ebs_master WHERE lga = '{selected_lga}'")
+            lga_data = run_query("SELECT * FROM ebs_master WHERE lga = %s", params=(selected_lga,))
 
             if not lga_data.empty:
                 col1, col2, col3, col4 = st.columns(4)
@@ -693,21 +725,20 @@ elif page == "🗺️ LGA Deep Dive":
                         if len(sector_data) > 0:
                             fig = px.pie(sector_data, values='amount_paid', names='sector',
                                          title=f'Sector Revenue Distribution - {selected_lga}')
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
 
                     with col2:
                         status_data = lga_data['status'].value_counts()
                         if len(status_data) > 0:
                             fig = px.pie(values=status_data.values, names=status_data.index,
                                          title='Payment Status Distribution')
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
 
                     st.subheader(f"Top Taxpayers in {selected_lga}")
                     top_taxpayers = lga_data.groupby(['full_name', 'sector'])['amount_paid'].sum().reset_index()
                     top_taxpayers = top_taxpayers.sort_values('amount_paid', ascending=False).head(10)
-                    # Clean formatting without HTML tags
                     top_taxpayers['amount_paid'] = top_taxpayers['amount_paid'].apply(lambda x: f"₦{x:,.2f}")
-                    st.dataframe(top_taxpayers, use_container_width=True)
+                    st.dataframe(top_taxpayers, width='stretch')
 
                     # Outstanding taxpayers in this LGA
                     st.subheader(f"Taxpayers with Outstanding Balance in {selected_lga}")
@@ -724,7 +755,7 @@ elif page == "🗺️ LGA Deep Dive":
                         outstanding_taxpayers['outstanding'] = outstanding_taxpayers['outstanding'].apply(
                             lambda x: f"₦{x:,.2f}")
                         st.dataframe(outstanding_taxpayers[['full_name', 'sector', 'outstanding']],
-                                     use_container_width=True)
+                                     width='stretch')
                     else:
                         st.info("No outstanding balances in this LGA")
 
@@ -734,17 +765,17 @@ elif page == "🗺️ LGA Deep Dive":
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                     st.subheader(f"Property Information for {selected_lga}")
                     try:
-                        properties_lga = run_query(f"""
+                        properties_lga = run_query("""
                             SELECT p.property_type, p.estimated_value, p.ward, p.street, t.full_name
                             FROM properties p
                             JOIN taxpayers t ON p.owner_id = t.id
-                            WHERE p.lga = '{selected_lga}'
+                            WHERE p.lga = %s
                             LIMIT 100
-                        """)
+                        """, params=(selected_lga,))
                         if not properties_lga.empty:
                             properties_lga['estimated_value'] = properties_lga['estimated_value'].apply(
                                 lambda x: f"₦{x:,.2f}")
-                            st.dataframe(properties_lga, use_container_width=True)
+                            st.dataframe(properties_lga, width='stretch')
                         else:
                             st.info(f"No property data available for {selected_lga}")
                     except Exception as e:
@@ -755,16 +786,16 @@ elif page == "🗺️ LGA Deep Dive":
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                     st.subheader(f"Business Information for {selected_lga}")
                     try:
-                        businesses_lga = run_query(f"""
+                        businesses_lga = run_query("""
                             SELECT business_name, sector, annual_revenue, employee_count, registered, ward, street
                             FROM businesses 
-                            WHERE lga = '{selected_lga}'
+                            WHERE lga = %s
                             LIMIT 100
-                        """)
+                        """, params=(selected_lga,))
                         if not businesses_lga.empty:
                             businesses_lga['annual_revenue'] = businesses_lga['annual_revenue'].apply(
                                 lambda x: f"₦{x:,.2f}")
-                            st.dataframe(businesses_lga, use_container_width=True)
+                            st.dataframe(businesses_lga, width='stretch')
                         else:
                             st.info(f"No business data available for {selected_lga}")
                     except Exception as e:
@@ -787,14 +818,13 @@ elif page == "🗺️ LGA Deep Dive":
                     ward_summary = ward_summary.sort_values('amount_paid', ascending=False)
                     ward_summary.columns = ['Ward', 'Total Revenue', 'Number of Taxpayers']
 
-                    # Clean display for dataframe (no HTML spans)
+                    # Clean display for dataframe
                     ward_summary['Revenue Display'] = ward_summary['Total Revenue'].apply(lambda x: f"₦{x:,.2f}")
 
                     st.subheader("📊 Ward Performance Summary")
-                    # Display clean version
                     display_ward = ward_summary[['Ward', 'Revenue Display', 'Number of Taxpayers']].copy()
                     display_ward.columns = ['Ward', 'Total Revenue', 'Number of Taxpayers']
-                    st.dataframe(display_ward, use_container_width=True)
+                    st.dataframe(display_ward, width='stretch')
 
                     # Ward-wise chart using raw values
                     fig = px.bar(ward_summary.head(10), x='Ward', y='Total Revenue',
@@ -802,7 +832,7 @@ elif page == "🗺️ LGA Deep Dive":
                                  color='Total Revenue', color_continuous_scale='Viridis')
                     fig.update_layout(height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                     fig.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
 
                     # Street-level breakdown
                     st.subheader("🏘️ Street-Level Breakdown by Ward")
@@ -820,14 +850,13 @@ elif page == "🗺️ LGA Deep Dive":
                         street_data = street_data.sort_values('amount_paid', ascending=False)
                         street_data.columns = ['Street', 'Total Revenue', 'Number of Taxpayers']
 
-                        # Clean display for dataframe (no HTML spans)
+                        # Clean display for dataframe
                         street_data['Revenue Display'] = street_data['Total Revenue'].apply(lambda x: f"₦{x:,.2f}")
 
                         st.write(f"**Streets in {selected_ward}:** {len(street_data)}")
-                        # Display clean version
                         display_streets = street_data[['Street', 'Revenue Display', 'Number of Taxpayers']].copy()
                         display_streets.columns = ['Street', 'Total Revenue', 'Number of Taxpayers']
-                        st.dataframe(display_streets, use_container_width=True)
+                        st.dataframe(display_streets, width='stretch')
 
                         # Top streets chart using raw values
                         if not street_data.empty:
@@ -837,7 +866,7 @@ elif page == "🗺️ LGA Deep Dive":
                                          color='Total Revenue', color_continuous_scale='Viridis')
                             fig.update_layout(height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                             fig.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
 
                         # Also show top taxpayers in this ward
                         st.subheader(f"Top Taxpayers in {selected_ward}")
@@ -846,16 +875,15 @@ elif page == "🗺️ LGA Deep Dive":
                         top_taxpayers_ward = top_taxpayers_ward.sort_values('amount_paid', ascending=False).head(10)
                         top_taxpayers_ward['amount_paid'] = top_taxpayers_ward['amount_paid'].apply(
                             lambda x: f"₦{x:,.2f}")
-                        st.dataframe(top_taxpayers_ward, use_container_width=True)
+                        st.dataframe(top_taxpayers_ward, width='stretch')
 
                     st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.warning("No LGA data available")
 
 
-
 # ============================================
-# 6. AI ASSISTANT - COMPLETE CHATBOT
+# 6. AI ASSISTANT - COMPLETE CHATBOT (FIXED)
 # ============================================
 elif page == "🤖 AI Assistant":
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
@@ -888,14 +916,14 @@ elif page == "🤖 AI Assistant":
             if lga.lower() in user_input_lower:
                 # Revenue queries
                 if any(word in user_input_lower for word in ['revenue', 'money', 'generated', 'make', 'collected']):
-                    data = run_query(f"""
+                    data = run_query("""
                         SELECT 
                             SUM(amount_paid) as revenue,
                             COUNT(DISTINCT taxpayer_id) as taxpayers,
                             COUNT(*) as assessments,
                             ROUND((SUM(amount_paid) / NULLIF(SUM(amount_due), 0) * 100), 2) as collection_rate
-                        FROM ebs_master WHERE lga = '{lga}'
-                    """)
+                        FROM ebs_master WHERE lga = %s
+                    """, params=(lga,))
                     if not data.empty:
                         revenue = data['revenue'][0] if not pd.isna(data['revenue'][0]) else 0
                         taxpayers = data['taxpayers'][0] if not pd.isna(data['taxpayers'][0]) else 0
@@ -905,22 +933,22 @@ elif page == "🤖 AI Assistant":
 
                 # Outstanding/Debt queries
                 elif any(word in user_input_lower for word in ['outstanding', 'debt', 'owe', 'owing']):
-                    data = run_query(f"""
+                    data = run_query("""
                         SELECT 
                             SUM(amount_due - amount_paid) as total_debt,
                             COUNT(DISTINCT CASE WHEN amount_paid < amount_due THEN taxpayer_id END) as debtors
-                        FROM ebs_master WHERE lga = '{lga}'
-                    """)
+                        FROM ebs_master WHERE lga = %s
+                    """, params=(lga,))
                     if not data.empty:
                         total_debt = data['total_debt'][0] if not pd.isna(data['total_debt'][0]) else 0
                         debtors = data['debtors'][0] if not pd.isna(data['debtors'][0]) else 0
 
-                        top_debtors = run_query(f"""
+                        top_debtors = run_query("""
                             SELECT full_name, ROUND(amount_due - amount_paid, 2) as debt
                             FROM ebs_master 
-                            WHERE lga = '{lga}' AND amount_paid < amount_due
+                            WHERE lga = %s AND amount_paid < amount_due
                             ORDER BY debt DESC LIMIT 5
-                        """)
+                        """, params=(lga,))
 
                         result = f"⚠️ **{lga}** has {format_number(total_debt)} in outstanding debt from {debtors} taxpayers.\n"
                         if not top_debtors.empty:
@@ -931,13 +959,13 @@ elif page == "🤖 AI Assistant":
 
                 # Compliance queries
                 elif any(word in user_input_lower for word in ['compliance', 'compliant']):
-                    data = run_query(f"""
+                    data = run_query("""
                         SELECT 
                             COUNT(CASE WHEN status = 'Paid' THEN 1 END) as fully_paid,
                             COUNT(*) as total,
                             ROUND((COUNT(CASE WHEN status = 'Paid' THEN 1 END) * 100.0 / COUNT(*)), 2) as compliance_rate
-                        FROM ebs_master WHERE lga = '{lga}'
-                    """)
+                        FROM ebs_master WHERE lga = %s
+                    """, params=(lga,))
                     if not data.empty:
                         fully = data['fully_paid'][0]
                         total = data['total'][0]
@@ -946,7 +974,7 @@ elif page == "🤖 AI Assistant":
 
                 # Wards queries
                 elif 'ward' in user_input_lower:
-                    wards = run_query(f"SELECT DISTINCT ward FROM ebs_master WHERE lga = '{lga}' LIMIT 10")
+                    wards = run_query("SELECT DISTINCT ward FROM ebs_master WHERE lga = %s LIMIT 10", params=(lga,))
                     if not wards.empty:
                         ward_list = wards['ward'].tolist()
                         return f"📍 **{lga}** has {len(ward_list)} wards. Top wards: {', '.join(ward_list[:5])}"
@@ -988,8 +1016,8 @@ elif page == "🤖 AI Assistant":
             lgas_found = [lga for lga in lga_list if lga.lower() in user_input_lower]
             if len(lgas_found) >= 2:
                 lga1, lga2 = lgas_found[0], lgas_found[1]
-                data1 = run_query(f"SELECT SUM(amount_paid) as revenue FROM ebs_master WHERE lga = '{lga1}'")
-                data2 = run_query(f"SELECT SUM(amount_paid) as revenue FROM ebs_master WHERE lga = '{lga2}'")
+                data1 = run_query("SELECT SUM(amount_paid) as revenue FROM ebs_master WHERE lga = %s", params=(lga1,))
+                data2 = run_query("SELECT SUM(amount_paid) as revenue FROM ebs_master WHERE lga = %s", params=(lga2,))
                 rev1 = data1['revenue'][0] if not data1.empty else 0
                 rev2 = data2['revenue'][0] if not data2.empty else 0
                 diff = rev1 - rev2
