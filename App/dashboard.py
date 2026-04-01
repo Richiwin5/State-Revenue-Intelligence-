@@ -54,7 +54,7 @@ def init_connection():
         return engine
 
     except Exception as e:
-        st.error(f"❌ Connection failed: {str(e)}")
+        st.error(f" Connection failed: {str(e)}")
         st.stop()
 
 
@@ -74,7 +74,6 @@ def run_query(query, params=None):
         return pd.DataFrame()
 
 
-# ============================================
 # HELPER FUNCTIONS
 # ============================================
 
@@ -147,17 +146,17 @@ current_year = datetime.now().year
 try:
     test_df = run_query("SELECT COUNT(*) as count FROM ebs_master")
     if test_df.empty:
-        st.sidebar.error("❌ Table 'ebs_master' not found or empty")
+        st.sidebar.error(" Table 'ebs_master' not found or empty")
         st.stop()
 
     record_count = test_df['count'].iloc[0] if not test_df.empty else 0
     if record_count > 0:
-        st.sidebar.success(f"✅ {record_count:,} records found")
+        st.sidebar.success(f" {record_count:,} records found")
     else:
-        st.sidebar.warning("⚠️ Table exists but has no data")
+        st.sidebar.warning(" Table exists but has no data")
 
 except Exception as e:
-    st.sidebar.error(f"❌ Database error: {str(e)}")
+    st.sidebar.error(f" Database error: {str(e)}")
     st.sidebar.info("Please verify: 1) Tables exist, 2) Database credentials are correct")
     st.stop()
 
