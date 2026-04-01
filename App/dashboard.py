@@ -19,13 +19,13 @@ if os.getenv("RENDER") is None:
 # ============================================
 
 def get_database_url():
-    # Always try DATABASE_URL first (Render production)
+    # First try DATABASE_URL (Render auto-provided or manually set)
     database_url = os.getenv("DATABASE_URL")
 
     if database_url:
         return database_url
 
-    # Fallback for local development (.env)
+    # Fallback for local development with individual variables
     DB_USER = os.getenv("DB_USER")
     DB_PASS = os.getenv("DB_PASS")
     DB_HOST = os.getenv("DB_HOST")
@@ -33,10 +33,9 @@ def get_database_url():
     DB_NAME = os.getenv("DB_NAME")
 
     if not all([DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME]):
-        raise Exception("Missing DB config")
+        raise Exception("Missing DB config. Please set DATABASE_URL or individual DB_* variables.")
 
     return f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
 
 
 @st.cache_resource
